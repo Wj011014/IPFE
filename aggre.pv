@@ -1,0 +1,273 @@
+type element. (*element in finite field or group*)
+free Sec:channel [private].		(*secure channel*)
+free Pub:channel.			(*public channel*)
+
+
+(*-------Names & Variables-------*)
+(*elements of cyclic group*)
+const g:element.
+
+(*1 . master public key*)
+free P:element.
+
+(*2. master secret key*)
+free s:element [private].
+free h:element [private].
+free h0:element [private].
+free egh:element [private].
+
+(*3. vehicles' private key*)
+free vsk1:element [private].
+free vsk2:element [private].
+free vsk3:element [private].
+free theta:element [private].
+
+
+
+(*4. RSUs' private key*)
+free rsk:element [private].
+
+
+(*ASs' private key*)
+free y:element [private].
+free ask1:element [private].
+free ask2:element [private].
+free ask3:element [private].
+free ask4:bitstring [private].
+free theta':element [private].
+
+(*5. vehicles' public key*)
+free V1:bitstring.
+free V2:bitstring.
+free V3:bitstring.
+
+(*6. AS public key*)
+free apk:element.
+
+
+(*8. RSU & identity*)
+free RSU:bitstring.
+
+(*8. AS & identity*)
+free IDA:bitstring.
+(*-------Constructors, Destructors & Equations------*)
+
+fun H(element,bitstring):bitstring.
+fun H1(bitstring):element.
+fun H2(element):bitstring.
+fun H3(bitstring,element,bitstring,bitstring,bitstring,bitstring):bitstring.
+fun H4(bitstring,element,bitstring,bitstring,bitstring,bitstring):bitstring.
+fun H5(bitstring,element,bitstring):bitstring.
+fun H6(bitstring,element,bitstring):bitstring.
+
+
+fun Mult(element,element):element.  (*Multiplication in group: G×G*)
+fun Add(bitstring,bitstring):bitstring.	 (*Addition*)
+fun Powzn(element,bitstring):element. 	(*g^s:Powzn(g,s)*)
+fun XOR(bitstring,bitstring):bitstring.
+fun Mult1(bitstring,bitstring):bitstring.
+fun Mult2(element,bitstring):element.
+fun And(bitstring,bitstring):bitstring.
+fun Sum(bitstring,bitstring,bitstring):bitstring.
+fun BM(element,element):element.
+
+(*reduc forall kB:element ,kA:element ,m:bitstring; Dec(kB,Enc(kA,m))=m.*)
+
+(*Event*)
+event beginVehicle(bitstring).
+event endVehicle(bitstring).
+event beginAS(bitstring).
+event endAS(bitstring).
+
+
+(*Queries*)
+query attacker(theta).
+
+query attacker(theta').
+query attacker(vsk1).
+query attacker(vsk2).
+query attacker(vsk3).
+query attacker(ask1).
+query attacker(ask2).
+query attacker(ask3).
+query attacker(ask4).
+query id:bitstring; inj-event (endVehicle(id)) ==> inj-event(beginAS(id)).
+query id:bitstring; inj-event (endAS(id)) ==> inj-event(beginVehicle(id)).
+
+(*Processes*)
+let KGC=
+	in(Sec,(RSU:bitstring, rsk:element));
+	new s:bitstring;
+	new a1:bitstring;
+	let P = Powzn(g,s) in
+	let rsk=s in
+	out(Sec,(rsk)) ;
+	out(Pub,P);
+	0.
+
+(*KGC Processes*)
+let vehicleReg=
+	in(Sec,(V1:bitstring,V2:bitstring,V3:bitstring,rsk:bitstring));
+	
+	new k1:bitstring;
+	new k2:bitstring;
+	new k3:bitstring;
+	let K1 = Powzn(g,k1) in
+	let K2 = Powzn(g,k2) in
+	let K3 = Powzn(g,k3) in
+	let c1=H(K1,V1) in
+	let c2=H(K2,V2) in	
+	let c3=H(K3,V3) in
+	let sk1=Powzn(H1(V1),Mult1(c1,rsk)) in	
+	let sk2=Powzn(H1(V2),Mult1(c2,rsk)) in
+	let sk3=Powzn(H1(V3),Mult1(c3,rsk)) in
+	let vsk1=Mult(Powzn(H1(V1),k1),sk1) in
+	let vsk2=Mult(Powzn(H1(V2),k2),sk2) in
+	let vsk3=Mult(Powzn(H1(V3),k3),sk3) in
+	out(Sec,(vsk1,vsk2,vsk3));
+	out(Pub,(K1,K2,K3));
+	0.
+
+let PKG=
+	
+	new alpha:bitstring;
+	new beta:bitstring;
+	let g1 = Powzn(g,alpha) in
+	let h0 = Powzn(h,beta) in
+	let h1 = Powzn(h,alpha) in
+	let egh=BM(g,h) in
+	out(Sec,(h,h0,h1,egh));
+	0.
+
+
+let ASReg=
+	in(Sec,(h:element,h1:element,h0:element,egh:element));
+	new r1:bitstring;
+	new r2:bitstring;
+	let ask1 = Mult(h0,Powzn(h1,r1)) in
+	let ask2 = Powzn(h,r1) in
+	let ask3 = Mult(h0,Powzn(egh,r1)) in
+	let ask4 = r2 in
+	let apk = Powzn(g,r2) in
+	out(Sec,(ask1,ask2,ask3,ask4));
+	out(Pub,apk); 
+	0.
+
+
+(*vehicle Processes*)
+let v1= 
+	out(Sec,(V1));
+	in(Sec,(vsk1:element));
+	event beginVehicle(V1);
+	new t1:bitstring;
+	let T1 = Powzn(H1(V1),t1) in
+	out(Pub,(T1));
+	in(Pub,(b0:bitstring,b1:bitstring,b2:bitstring,t11:bitstring,T2:element,sigma:bitstring)) ;
+
+	let Q1' = BM(Powzn(vsk1,Add(t11,t1)),apk) in
+	let gamma1'=H2(Q1') in
+	let theta' = Add(b0,Add(Mult1(b1,gamma1' ),Mult1(b2,Mult1(gamma1' ,gamma1' )))) in
+	let h3'= H3(IDA,T2,theta',b0,b1,b2) in 
+	let h4'= H4(IDA,T2,theta',b0,b1,b2) in 
+	if(Powzn(g,sigma) = Mult(Mult(Powzn(T2,h3'),Powzn(g,Mult1(h3',theta'))),Powzn(apk,h4')) )then
+	new t1':bitstring;
+	let T1' = Powzn(g,t1') in
+	let h51 = H5(V1,T1',theta') in 
+	let h61 = H6(V1,T1',theta') in 
+	let sigma1 = Add(Mult1(h51,t1'),Mult1(h61,theta')) in
+	out(Pub,(sigma1,T1'));
+	event endVehicle(V1)
+	else 0.
+	
+let v2= 
+	out(Sec,(V2));
+	in(Sec,(vsk2:element));
+	event beginVehicle(V2);
+	new t2:bitstring;
+	let T2 = Powzn(H1(V2),t2) in
+	out(Pub,(T2));
+
+	in(Pub,(b0:bitstring,b1:bitstring,b2:bitstring,t11:bitstring,T2:element,sigma:bitstring));
+	let Q2' = BM(Powzn(vsk2,Add(t11,t2)),apk) in
+	let gamma2'=H2(Q2') in
+	let theta' = Add(b0,Add(Mult1(b1,gamma2' ),Mult1(b2,Mult1(gamma2' ,gamma2' )))) in
+	let h3'= H3(IDA,T2,theta',b0,b1,b2) in 
+	let h4'= H4(IDA,T2,theta',b0,b1,b2) in 
+	if(Powzn(g,sigma) = Mult(Mult(Powzn(T2,h3'),Powzn(g,Mult1(h3',theta'))),Powzn(apk,h4'))) then
+	new t2':bitstring;
+	let T2' = Powzn(g,t2') in
+	let h52 = H5(V2,T2',theta') in 
+	let h62 = H6(V2,T2',theta') in 
+	let sigma2 = Add(Mult1(h52,t2'),Mult1(h62,theta')) in
+	out(Pub,(sigma2,T2'));
+	event endVehicle(V2)
+	else 0.
+let v3= 
+	out(Sec,(V3));
+	in(Sec,(vsk3:element));
+	event beginVehicle(V3);
+	new t3:bitstring;
+	let T3 = Powzn(H1(V3),t3) in
+	out(Pub,(T3));
+
+	in(Pub,(b0:bitstring,b1:bitstring,b2:bitstring,t11:bitstring,T2:element,sigma:bitstring));
+	let Q3' = BM(Powzn(vsk3,Add(t11,t3)),apk) in
+	let gamma3'=H2(Q3') in
+	let theta' = Add(b0,Add(Mult1(b1,gamma3' ),Mult1(b2,Mult1(gamma3' ,gamma3' )))) in
+	let h3'= H3(IDA,T2,theta',b0,b1,b2) in 
+	let h4'= H4(IDA,T2,theta',b0,b1,b2) in 
+	if(Powzn(g,sigma) = Mult(Mult(Powzn(T2,h3'),Powzn(g,Mult1(h3',theta'))),Powzn(apk,h4'))) then
+	new t3':bitstring;
+	let T3' = Powzn(g,t3') in
+	let h53 = H5(V3,T3',theta') in 
+	let h63 = H6(V3,T3',theta') in 
+	let sigma3 = Add(Mult1(h53,t3'),Mult1(h63,theta')) in
+	out(Pub,(sigma3,T3'));
+	event endVehicle(V3)
+	else 0.
+
+let AS = 
+	out(Sec,(IDA));
+	in(Sec,(ask1:element,ask2:element,ask3:element,ask4:bitstring));
+	event beginAS(IDA);
+	new t11:bitstring;
+	new b0:bitstring;
+	new b1:bitstring;
+	new b2:bitstring;
+	new theta:bitstring;
+	new t22:bitstring;
+	in(Pub,(T1:element,K1:element,T2:element,K2:element,T3:element,K3:element,V1:bitstring,V2:bitstring,V3:bitstring));
+	let c1=H(K1,V1) in
+	let c2=H(K2,V2) in	
+	let c3=H(K3,V3) in
+	let Q1 = BM(Mult(T1,Powzn(H1(V1),t11)),Mult(Powzn(K1,ask4),Powzn(P,Mult1(ask4,c1)))) in
+	let Q2 = BM(Mult(T2,Powzn(H1(V2),t11)),Mult(Powzn(K2,ask4),Powzn(P,Mult1(ask4,c2)))) in
+	let Q3 = BM(Mult(T3,Powzn(H1(V3),t11)),Mult(Powzn(K3,ask4),Powzn(P,Mult1(ask4,c3)))) in
+	let gamma1 = H2(Q1) in 
+	let gamma2 = H2(Q2) in 
+	let gamma3 = H2(Q3) in 
+	let theta = Add(b0,Add(Mult1(b1,gamma1 ),Mult1(b2,Mult1(gamma1 ,gamma1 )))) in
+	let T2 = Powzn(g,t22) in
+	let h3= H3(IDA,T2,theta,b0,b1,b2) in 
+	let h4= H4(IDA,T2,theta,b0,b1,b2) in 
+	let sigma = Add(Mult1(h3,Add(t22,theta)),Mult1(h4,ask4)) in
+	out(Pub,(b0,b1,b2,t11,T2,sigma));
+
+	in(Pub,(sigma1:bitstring,T1':element,sigma2:bitstring,T2':element,sigma3:bitstring,T3':element));
+	let h51' = H5(V1,T1',theta) in 
+	let h61' = H6(V1,T1',theta) in 
+	let h52' = H5(V2,T2',theta) in 
+	let h62' = H6(V2,T2',theta) in 
+	let h53' = H5(V3,T3',theta) in 
+	let h63' = H6(V3,T3',theta) in 
+	if(Powzn(g,sigma1) = Mult(Powzn(T1',h51') ,Powzn(g,Mult1(h61',theta))))  then
+	if(Powzn(g,sigma2) = Mult(Powzn(T2',h52') ,Powzn(g,Mult1(h62',theta))))  then
+	if(Powzn(g,sigma3) = Mult(Powzn(T3',h53') ,Powzn(g,Mult1(h63',theta))))  then
+	event endAS(IDA)
+	else 0.
+
+
+
+(*Processes Replication*)
+process 
+(!AS | !v1 | !v2 | !v3)
